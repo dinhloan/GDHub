@@ -9,6 +9,7 @@ import { EntriesModule } from './modules/entries/entries.module';
 import { GroupsModule } from './modules/groups/groups.module';
 import { TopicsModule } from './modules/topics/topics.module';
 import { UsersModule } from './modules/users/users.module';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -28,5 +29,6 @@ import { UsersModule } from './modules/users/users.module';
     ChecklistsModule,
     AiModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}

@@ -11,6 +11,7 @@ npm run start:dev
 ```
 
 Default API URL: `http://localhost:4000/api`
+Health check: `http://localhost:4000/api/health`
 
 ## Environment
 
@@ -20,6 +21,26 @@ Default API URL: `http://localhost:4000/api`
 - `CLOUDINARY_*`: reserved for production media upload integration.
 
 Without `OPENAI_API_KEY`, the AI service uses deterministic local embeddings and local critique placeholders so development can continue offline.
+
+## Deploy to Render
+
+Use the repository root as this backend folder.
+
+Render can read `render.yaml` directly:
+
+- Build command: `npm ci && npm run build`
+- Start command: `npm run start:prod`
+- Health check path: `/api/health`
+
+Set these Render environment variables:
+
+```bash
+MONGODB_URI=mongodb://...
+FRONTEND_ORIGIN=https://your-vercel-app.vercel.app
+OPENAI_API_KEY=
+```
+
+After Vercel creates the final frontend domain, update `FRONTEND_ORIGIN` with that domain. For multiple origins, separate values with commas.
 
 ## Modules
 
