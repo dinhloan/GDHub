@@ -10,7 +10,14 @@ describe('ChecklistsService', () => {
       create: jest.fn((payload) => Promise.resolve({ _id: 'checklist-1', ...payload })),
       find: jest.fn(() => ({
         populate: jest.fn(() => ({
-          lean: jest.fn().mockResolvedValue([{ _id: 'checklist-1' }]),
+          sort: jest.fn(() => ({
+            lean: jest.fn().mockResolvedValue([{ _id: 'checklist-1' }]),
+          })),
+        })),
+      })),
+      findOne: jest.fn(() => ({
+        populate: jest.fn(() => ({
+          lean: jest.fn().mockResolvedValue(null),
         })),
       })),
       findOneAndUpdate: jest.fn().mockResolvedValue({ _id: 'checklist-1' }),

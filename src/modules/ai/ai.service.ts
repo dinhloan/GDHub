@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import OpenAI from 'openai';
@@ -6,16 +6,23 @@ import { toFile } from 'openai/uploads';
 
 @Injectable()
 export class AiService {
+  private readonly logger = new Logger(AiService.name);
   private readonly openai?: OpenAI;
   private readonly embeddings?: OpenAIEmbeddings;
+  private readonly chatModel: string;
+  private readonly transcriptionModel: string;
 
   constructor(private readonly config: ConfigService) {
-    const apiKey = this.config.get<string>('OPENAI_API_KEY');
+    const apiKey = this.config.get<string>('OPENAI_API_KEY') || this.config.get<string>('AI_API_KEY');
+    const baseURL = this.config.get<string>('OPENAI_BASE_URL') || undefined;
+    this.chatModel = this.config.get<string>('OPENAI_CHAT_MODEL') ?? 'gpt-4o-mini';
+    this.transcriptionModel = this.config.get<string>('OPENAI_TRANSCRIPTION_MODEL') ?? 'whisper-1';
+
     if (apiKey) {
-      this.openai = new OpenAI({ apiKey });
+      this.openai = new OpenAI({ apiKey, baseURL });
       this.embeddings = new OpenAIEmbeddings({
         apiKey,
-        model: 'text-embedding-3-small',
+        model: this.config.get<string>('OPENAI_EMBEDDING_MODEL') ?? 'text-embedding-3-small',
       });
     }
   }
@@ -25,7 +32,12 @@ export class AiService {
       return this.localEmbedding(text);
     }
 
-    return this.embeddings.embedQuery(text);
+    try {
+      return await this.embeddings.embedQuery(text);
+    } catch (error) {
+      this.logger.warn(`Embedding provider failed, using local embedding: ${this.errorMessage(error)}`);
+      return this.localEmbedding(text);
+    }
   }
 
   async critique(content: string, template: '6 Thinking Hats' | '5W1H') {
@@ -33,46 +45,53 @@ export class AiService {
       return this.localCritique(content, template);
     }
 
-    const response = await this.openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content:
-            'Bạn là AI critic cho nhóm học tập. Trả lời tiếng Việt, ngắn gọn, tập trung vào câu hỏi phản biện có thể thảo luận.',
-        },
-        {
-          role: 'user',
-          content: `Phân tích entry sau theo template ${template}. Đóng vai chuyên gia ở 4 lĩnh vực: Khoa học, Công nghệ, Năng lượng, Đời sống.\n\n${content}`,
-        },
-      ],
-    });
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: this.chatModel,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Bạn là AI critic cho nhóm học tập. Trả lời tiếng Việt, ngắn gọn, tập trung vào câu hỏi phản biện có thể thảo luận.',
+          },
+          {
+            role: 'user',
+            content: `Phân tích entry sau theo template ${template}. Đóng vai chuyên gia ở 4 lĩnh vực: Khoa học, Công nghệ, Năng lượng, Đời sống.\n\n${content}`,
+          },
+        ],
+      });
 
-    return {
-      template,
-      questions: response.choices[0].message.content?.split('\n').filter(Boolean) ?? [],
-      source: 'openai',
-    };
+      return {
+        template,
+        questions: response.choices[0].message.content?.split('\n').filter(Boolean) ?? [],
+        source: 'llm',
+      };
+    } catch (error) {
+      this.logger.warn(`Critique provider failed, using local critic: ${this.errorMessage(error)}`);
+      return this.localCritique(content, template);
+    }
   }
 
   async transcribe(file: Express.Multer.File) {
     if (!this.openai) {
-      return {
-        text: `Transcription placeholder for ${file.originalname}. Configure OPENAI_API_KEY to use Whisper.`,
-        source: 'local',
-      };
+      return this.localTranscription(file);
     }
 
-    const audio = await toFile(file.buffer, file.originalname, { type: file.mimetype });
-    const transcription = await this.openai.audio.transcriptions.create({
-      file: audio,
-      model: 'whisper-1',
-    });
+    try {
+      const audio = await toFile(file.buffer, file.originalname, { type: file.mimetype });
+      const transcription = await this.openai.audio.transcriptions.create({
+        file: audio,
+        model: this.transcriptionModel,
+      });
 
-    return {
-      text: transcription.text,
-      source: 'openai-whisper',
-    };
+      return {
+        text: transcription.text,
+        source: 'llm-transcription',
+      };
+    } catch (error) {
+      this.logger.warn(`Transcription provider failed, using local response: ${this.errorMessage(error)}`);
+      return this.localTranscription(file);
+    }
   }
 
   private localEmbedding(text: string) {
@@ -85,16 +104,29 @@ export class AiService {
   }
 
   private localCritique(content: string, template: '6 Thinking Hats' | '5W1H') {
-    const excerpt = content.slice(0, 160);
+    const excerpt = content.trim().replace(/\s+/g, ' ').slice(0, 160) || 'nội dung này';
     return {
       template,
       source: 'local',
       questions: [
-        `Khoa học: Giả định nào trong "${excerpt}" cần kiểm chứng bằng bằng chứng?`,
-        'Công nghệ: Có giải pháp kỹ thuật nào đơn giản hơn nhưng vẫn đạt mục tiêu không?',
-        'Năng lượng: Chi phí vận hành, tài nguyên và tác động môi trường đã được tính chưa?',
+        `Khoa học: Giả định nào trong "${excerpt}" cần được kiểm chứng bằng bằng chứng cụ thể?`,
+        'Công nghệ: Có cách triển khai nào đơn giản hơn nhưng vẫn đạt cùng mục tiêu không?',
+        'Năng lượng: Chi phí vận hành, tài nguyên và tác động dài hạn đã được tính đủ chưa?',
         'Đời sống: Người dùng hoặc nhóm học tập sẽ gặp trở ngại thực tế nào khi áp dụng?',
       ],
     };
+  }
+
+  private localTranscription(file: Express.Multer.File) {
+    return {
+      text:
+        `Chưa cấu hình dịch vụ chuyển giọng nói thành văn bản cho file "${file.originalname}". ` +
+        'Có thể dùng OPENAI_API_KEY hoặc OPENAI_BASE_URL trỏ tới dịch vụ OpenAI-compatible để bật transcription trên backend.',
+      source: 'local',
+    };
+  }
+
+  private errorMessage(error: unknown) {
+    return error instanceof Error ? error.message : String(error);
   }
 }

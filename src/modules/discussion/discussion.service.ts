@@ -24,10 +24,15 @@ export class DiscussionService {
   }
 
   async findByEntry(entryId: string) {
-    return this.messageModel
-      .find({ entryId })
+    const messages = await this.messageModel
+      .find({ entryId: new Types.ObjectId(entryId) })
       .populate('userId')
       .sort({ timestamp: 1 })
       .lean();
+    if (messages.length) {
+      return messages;
+    }
+
+    return this.messageModel.find({ entryId }).populate('userId').sort({ timestamp: 1 }).lean();
   }
 }

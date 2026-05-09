@@ -26,6 +26,14 @@ export class ChecklistsService {
   }
 
   async createFromTemplate(topicId: string, template: 'Apple DRI' | 'Google Design Sprint', driUserId: string) {
+    const existing = await this.checklistModel
+      .findOne({ topicId: new Types.ObjectId(topicId), template })
+      .populate('items.driUserId topicId')
+      .lean();
+    if (existing) {
+      return existing;
+    }
+
     const phases =
       template === 'Google Design Sprint'
         ? ['Understand', 'Sketch', 'Decide', 'Prototype', 'Test']
@@ -44,7 +52,16 @@ export class ChecklistsService {
   }
 
   async findByTopic(topicId: string) {
-    return this.checklistModel.find({ topicId }).populate('items.driUserId topicId').lean();
+    const checklists = await this.checklistModel
+      .find({ topicId: new Types.ObjectId(topicId) })
+      .populate('items.driUserId topicId')
+      .sort({ createdAt: -1 })
+      .lean();
+    if (checklists.length) {
+      return checklists;
+    }
+
+    return this.checklistModel.find({ topicId }).populate('items.driUserId topicId').sort({ createdAt: -1 }).lean();
   }
 
   async updateItem(checklistId: string, itemId: string, dto: UpdateChecklistItemDto) {
