@@ -2,7 +2,7 @@
   - type: web
     name: group-diary-backend
     runtime: node
-    buildCommand: npm install && npm run build
+    buildCommand: rm -rf dist node_modules/.cache && npm install && npm run build
     startCommand: npm run start:prod
     envVars:
       - key: MONGODB_URI

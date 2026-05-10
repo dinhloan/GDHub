@@ -1,10 +1,21 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import matter = require('gray-matter');
 import { Model, Types } from 'mongoose';
 import { AiService } from '../ai/ai.service';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { UpdateEntryDto } from './dto/update-entry.dto';
 import { Entry } from './schemas/entry.schema';
+
+const STITCH_PROJECT_URL = 'https://stitch.withgoogle.com/projects/7588991082477143008';
+const DEFAULT_STITCH_METADATA = {
+  title: 'Collaborative Knowledge Diary',
+  layout: 'knowledge-diary-shell',
+  theme: 'academic-amber-dark',
+  priority: 'normal',
+  timeline: null as string | null,
+  template: 'stitch-academic-amber',
+};
 
 @Injectable()
 export class EntriesService {
@@ -16,23 +27,24 @@ export class EntriesService {
   async create(dto: CreateEntryDto) {
     const vectorEmbedding = await this.aiService.embed(dto.content);
     const aiCritic = dto.status === 'Debating' ? await this.createAiCritic(dto.content) : undefined;
-    return this.entryModel.create({
+    const entry = await this.entryModel.create({
       ...dto,
       topicId: new Types.ObjectId(dto.topicId),
       authorId: new Types.ObjectId(dto.authorId),
       vectorEmbedding,
       ...(aiCritic ? { aiCritic } : {}),
     });
+    return this.enrichEntry(entry);
   }
 
   async findAll(topicId?: string) {
     const directEntries = await this.entryModel.find(topicId ? { topicId } : {}).populate('authorId topicId').sort({ updatedAt: -1 }).lean();
     if (!topicId || directEntries.length) {
-      return directEntries;
+      return directEntries.map((entry) => this.enrichEntry(entry));
     }
 
     const entries = await this.entryModel.find({}).populate('authorId topicId').sort({ updatedAt: -1 }).lean();
-    return entries.filter((entry) => this.matchesRef(entry.topicId, topicId));
+    return entries.filter((entry) => this.matchesRef(entry.topicId, topicId)).map((entry) => this.enrichEntry(entry));
   }
 
   async findById(id: string) {
@@ -40,7 +52,7 @@ export class EntriesService {
     if (!entry) {
       throw new NotFoundException('Entry not found.');
     }
-    return entry;
+    return this.enrichEntry(entry);
   }
 
   async update(id: string, dto: UpdateEntryDto) {
@@ -67,7 +79,7 @@ export class EntriesService {
     if (!entry) {
       throw new NotFoundException('Entry not found.');
     }
-    return entry;
+    return this.enrichEntry(entry);
   }
 
   async remove(id: string) {
@@ -151,5 +163,83 @@ export class EntriesService {
       ...result,
       generatedAt: new Date(),
     };
+  }
+
+  private enrichEntry<T extends { content?: string }>(entry: T) {
+    const plainEntry = this.toPlainObject(entry);
+    if (!plainEntry.content) {
+      return plainEntry;
+    }
+
+    const parsed = matter(plainEntry.content);
+    const frontmatter = parsed.data ?? {};
+    const content = parsed.content.trim();
+    const layout = this.stringValue(frontmatter.layout, DEFAULT_STITCH_METADATA.layout);
+    const theme = this.stringValue(frontmatter.theme, DEFAULT_STITCH_METADATA.theme);
+    const priority = this.stringValue(frontmatter.priority, DEFAULT_STITCH_METADATA.priority);
+    const timeline = this.nullableString(frontmatter.timeline);
+    const template = this.stringValue(frontmatter.template, this.resolveTemplate(layout, theme));
+    const title = this.stringValue(frontmatter.title, this.firstHeading(content) ?? DEFAULT_STITCH_METADATA.title);
+
+    return {
+      ...plainEntry,
+      content,
+      metadata: {
+        title,
+        layout,
+        theme,
+        priority,
+        timeline,
+        template,
+        stitchIntent: {
+          source: 'stitch',
+          projectUrl: STITCH_PROJECT_URL,
+          layout,
+          theme,
+          priority,
+          timeline,
+          template,
+        },
+        frontmatter,
+      },
+    };
+  }
+
+  private toPlainObject<T>(entry: T): T {
+    if (entry && typeof entry === 'object' && 'toObject' in entry && typeof entry.toObject === 'function') {
+      return entry.toObject();
+    }
+    return entry;
+  }
+
+  private resolveTemplate(layout: string, theme: string) {
+    const normalizedLayout = layout.toLowerCase();
+    const normalizedTheme = theme.toLowerCase();
+
+    if (normalizedLayout.includes('timeline')) {
+      return 'stitch-timeline';
+    }
+    if (normalizedLayout.includes('graph')) {
+      return 'stitch-knowledge-graph';
+    }
+    if (normalizedTheme.includes('amber') || normalizedTheme.includes('academic')) {
+      return 'stitch-academic-amber';
+    }
+    return 'stitch-default';
+  }
+
+  private firstHeading(markdown: string) {
+    return markdown
+      .split(/\r?\n/)
+      .map((line) => line.match(/^#\s+(.+)$/)?.[1]?.trim())
+      .find(Boolean);
+  }
+
+  private stringValue(value: unknown, fallback: string) {
+    return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+  }
+
+  private nullableString(value: unknown) {
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
   }
 }

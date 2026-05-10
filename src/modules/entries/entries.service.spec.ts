@@ -109,6 +109,45 @@ describe('EntriesService', () => {
     expect(result[0].similarity).toBeCloseTo(1);
   });
 
+  it('extracts Markdown frontmatter into entry metadata for frontend templates', async () => {
+    const entries = [
+      {
+        _id: 'frontmatter-entry',
+        topicId,
+        authorId,
+        content: [
+          '---',
+          'layout: knowledge-diary-shell',
+          'theme: academic-amber-dark',
+          'priority: high',
+          'timeline: Sprint 1',
+          '---',
+          '# Stitch Diary',
+          '',
+          'Discussion content',
+        ].join('\n'),
+        vectorEmbedding: [1, 0, 0],
+      },
+    ];
+    const { service } = createService(entries);
+
+    const result = await service.findAll(topicId);
+
+    expect(result[0]).toEqual(
+      expect.objectContaining({
+        content: '# Stitch Diary\n\nDiscussion content',
+        metadata: expect.objectContaining({
+          title: 'Stitch Diary',
+          layout: 'knowledge-diary-shell',
+          theme: 'academic-amber-dark',
+          priority: 'high',
+          timeline: 'Sprint 1',
+          template: 'stitch-academic-amber',
+        }),
+      }),
+    );
+  });
+
   it('builds graph edges for topic ownership and shared public tags', async () => {
     const entries = [
       {
