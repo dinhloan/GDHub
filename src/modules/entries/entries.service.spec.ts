@@ -25,6 +25,11 @@ describe('EntriesService', () => {
     };
     const aiService = {
       embed: jest.fn().mockResolvedValue([1, 0, 0]),
+      challengeQuestions: jest.fn().mockResolvedValue({
+        questions: ['Question 1', 'Question 2', 'Question 3'],
+        source: 'llm',
+        model: 'gpt-test',
+      }),
     };
 
     return {
@@ -51,7 +56,38 @@ describe('EntriesService', () => {
       expect.objectContaining({
         content: 'Knowledge graph note',
         vectorEmbedding: [1, 0, 0],
+        aiCritic: expect.objectContaining({
+          questions: ['Question 1', 'Question 2', 'Question 3'],
+          source: 'llm',
+        }),
       }),
+    );
+  });
+
+  it('generates AI critic questions when an entry moves to Debating', async () => {
+    const { service, entryModel, aiService } = createService();
+    entryModel.findById.mockReturnValue({
+      lean: jest.fn().mockResolvedValue({
+        _id: 'entry-1',
+        content: 'Draft thesis',
+        status: 'Draft',
+      }),
+    });
+    entryModel.findByIdAndUpdate.mockResolvedValue({ _id: 'entry-1', status: 'Debating' });
+
+    await service.update('entry-1', { status: 'Debating' });
+
+    expect(aiService.challengeQuestions).toHaveBeenCalledWith('Draft thesis');
+    expect(entryModel.findByIdAndUpdate).toHaveBeenCalledWith(
+      'entry-1',
+      expect.objectContaining({
+        status: 'Debating',
+        aiCritic: expect.objectContaining({
+          questions: ['Question 1', 'Question 2', 'Question 3'],
+          model: 'gpt-test',
+        }),
+      }),
+      { new: true },
     );
   });
 

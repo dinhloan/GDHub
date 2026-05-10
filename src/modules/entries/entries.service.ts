@@ -15,11 +15,13 @@ export class EntriesService {
 
   async create(dto: CreateEntryDto) {
     const vectorEmbedding = await this.aiService.embed(dto.content);
+    const aiCritic = dto.status === 'Debating' ? await this.createAiCritic(dto.content) : undefined;
     return this.entryModel.create({
       ...dto,
       topicId: new Types.ObjectId(dto.topicId),
       authorId: new Types.ObjectId(dto.authorId),
       vectorEmbedding,
+      ...(aiCritic ? { aiCritic } : {}),
     });
   }
 
@@ -42,7 +44,15 @@ export class EntriesService {
   }
 
   async update(id: string, dto: UpdateEntryDto) {
+    const existing = await this.entryModel.findById(id).lean();
+    if (!existing) {
+      throw new NotFoundException('Entry not found.');
+    }
+
     const vectorEmbedding = dto.content ? await this.aiService.embed(dto.content) : undefined;
+    const nextContent = dto.content ?? existing.content;
+    const isMovingToDebating = dto.status === 'Debating' && existing.status !== 'Debating';
+    const aiCritic = isMovingToDebating ? await this.createAiCritic(nextContent) : undefined;
     const entry = await this.entryModel.findByIdAndUpdate(
       id,
       {
@@ -50,6 +60,7 @@ export class EntriesService {
         ...(dto.topicId ? { topicId: new Types.ObjectId(dto.topicId) } : {}),
         ...(dto.authorId ? { authorId: new Types.ObjectId(dto.authorId) } : {}),
         ...(vectorEmbedding ? { vectorEmbedding } : {}),
+        ...(aiCritic ? { aiCritic } : {}),
       },
       { new: true },
     );
@@ -132,5 +143,13 @@ export class EntriesService {
       return String((value as { _id: unknown })._id) === id;
     }
     return String(value) === id;
+  }
+
+  private async createAiCritic(content: string) {
+    const result = await this.aiService.challengeQuestions(content);
+    return {
+      ...result,
+      generatedAt: new Date(),
+    };
   }
 }

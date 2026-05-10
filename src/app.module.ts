@@ -7,6 +7,7 @@ import { ChecklistsModule } from './modules/checklists/checklists.module';
 import { DiscussionModule } from './modules/discussion/discussion.module';
 import { EntriesModule } from './modules/entries/entries.module';
 import { GroupsModule } from './modules/groups/groups.module';
+import { ReadmeModule } from './modules/readme/readme.module';
 import { TopicsModule } from './modules/topics/topics.module';
 import { UsersModule } from './modules/users/users.module';
 import { HealthController } from './health.controller';
@@ -28,6 +29,7 @@ import { HealthController } from './health.controller';
     DiscussionModule,
     ChecklistsModule,
     AiModule,
+    ReadmeModule,
   ],
   controllers: [HealthController],
 })

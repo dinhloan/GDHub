@@ -26,6 +26,23 @@ export class EntryTag {
 
 export const EntryTagSchema = SchemaFactory.createForClass(EntryTag);
 
+@Schema({ _id: false })
+export class EntryAiCritic {
+  @Prop({ default: [] })
+  questions: string[];
+
+  @Prop({ default: 'local' })
+  source: string;
+
+  @Prop()
+  model?: string;
+
+  @Prop({ default: Date.now })
+  generatedAt: Date;
+}
+
+export const EntryAiCriticSchema = SchemaFactory.createForClass(EntryAiCritic);
+
 @Schema({ timestamps: true })
 export class Entry {
   @Prop({ required: true, type: Types.ObjectId, ref: 'Topic', index: true })
@@ -48,6 +65,9 @@ export class Entry {
 
   @Prop({ default: [] })
   vectorEmbedding: number[];
+
+  @Prop({ type: EntryAiCriticSchema })
+  aiCritic?: EntryAiCritic;
 }
 
 export const EntrySchema = SchemaFactory.createForClass(Entry);

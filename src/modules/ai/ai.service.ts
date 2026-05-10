@@ -72,6 +72,40 @@ export class AiService {
     }
   }
 
+  async challengeQuestions(content: string) {
+    const systemPrompt =
+      'Bạn là chuyên gia phản biện. Hãy dựa vào 4 lĩnh vực: Khoa học, Công nghệ, Năng lượng, Đời sống để đặt ra 3 câu hỏi thách thức cho nội dung sau...';
+
+    if (!this.openai) {
+      return this.localChallengeQuestions(content);
+    }
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: this.chatModel,
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt,
+          },
+          {
+            role: 'user',
+            content,
+          },
+        ],
+      });
+
+      return {
+        questions: this.toQuestionList(response.choices[0].message.content ?? ''),
+        source: 'llm',
+        model: this.chatModel,
+      };
+    } catch (error) {
+      this.logger.warn(`AI critic failed, using local challenge questions: ${this.errorMessage(error)}`);
+      return this.localChallengeQuestions(content);
+    }
+  }
+
   async transcribe(file: Express.Multer.File) {
     if (!this.openai) {
       return this.localTranscription(file);
@@ -115,6 +149,29 @@ export class AiService {
         'Đời sống: Người dùng hoặc nhóm học tập sẽ gặp trở ngại thực tế nào khi áp dụng?',
       ],
     };
+  }
+
+  private localChallengeQuestions(content: string) {
+    const excerpt = content.trim().replace(/\s+/g, ' ').slice(0, 180) || 'nội dung này';
+    return {
+      source: 'local',
+      model: 'local-critic',
+      questions: [
+        `Khoa học: Giả định quan trọng nhất trong "${excerpt}" có thể được kiểm chứng bằng dữ liệu nào?`,
+        'Công nghệ và năng lượng: Giải pháp này có điểm nghẽn kỹ thuật hoặc chi phí vận hành nào dễ bị đánh giá thấp?',
+        'Đời sống: Khi áp dụng vào thực tế, nhóm người dùng nào có thể bị ảnh hưởng ngoài dự tính và vì sao?',
+      ],
+    };
+  }
+
+  private toQuestionList(text: string) {
+    const questions = text
+      .split('\n')
+      .map((line) => line.replace(/^\s*[-*\d.)]+\s*/, '').trim())
+      .filter(Boolean)
+      .slice(0, 3);
+
+    return questions.length ? questions : this.localChallengeQuestions(text).questions;
   }
 
   private localTranscription(file: Express.Multer.File) {
