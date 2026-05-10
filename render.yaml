@@ -1,25 +1,13 @@
-services:
+﻿services:
   - type: web
-    name: gdhub-be
+    name: group-diary-backend
     runtime: node
-    plan: free
-    buildCommand: npm ci --include=dev && npm run build
+    buildCommand: npm install && npm run build
     startCommand: npm run start:prod
-    healthCheckPath: /api/health
     envVars:
-      - key: NODE_ENV
-        value: production
       - key: MONGODB_URI
         sync: false
-      - key: FRONTEND_ORIGIN
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_BASE_URL
-        sync: false
-      - key: OPENAI_CHAT_MODEL
-        value: gpt-4o-mini
-      - key: OPENAI_EMBEDDING_MODEL
-        value: text-embedding-3-small
-      - key: OPENAI_TRANSCRIPTION_MODEL
-        value: whisper-1
+      - key: FRONTEND_URL
+        value: https://fe-lilac-three.vercel.app
+      - key: PORT
+        value: 10000

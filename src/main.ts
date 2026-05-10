@@ -8,8 +8,11 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
-  const frontendOrigin = config.get<string>('FRONTEND_ORIGIN') ?? 'http://localhost:5173';
-  const allowedOrigins = frontendOrigin.split(',').map((origin) => origin.trim());
+  const frontendUrl = config.get<string>('FRONTEND_URL') ?? config.get<string>('FRONTEND_ORIGIN') ?? 'http://localhost:5173';
+  const allowedOrigins = frontendUrl
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
   app.enableCors({
     origin: allowedOrigins,
